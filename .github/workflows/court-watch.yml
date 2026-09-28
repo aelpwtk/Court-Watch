@@ -1,0 +1,35 @@
+name: Court watch
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # every 10 min (GitHub may run it a few minutes late)
+  workflow_dispatch:           # adds a manual "Run workflow" button
+
+permissions:
+  contents: write              # lets the bot save state.json back to the repo
+
+concurrency:
+  group: court-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check 20:00-21:00 slots
+        run: python3 check_courts.py
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+
+      - name: Save state
+        run: |
+          git config user.name "court-bot"
+          git config user.email "court-bot@users.noreply.github.com"
+          git add state.json
+          git diff --cached --quiet && exit 0
+          git commit -m "court-watch: update state"
+          git pull --rebase
+          git push
