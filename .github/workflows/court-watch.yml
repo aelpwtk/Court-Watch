@@ -6,7 +6,7 @@ on:
   workflow_dispatch:           # adds a manual "Run workflow" button
 
 permissions:
-  contents: write              # lets the bot save state.json back to the repo
+  contents: write              # lets the bot save its state files back to the repo
 
 concurrency:
   group: court-watch
@@ -15,20 +15,29 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v5
 
-      - name: Check 20:00-21:00 slots
+      - name: Challenge Tennis Club (20:00-22:00)
         run: python3 check_courts.py
+        continue-on-error: true
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+
+      - name: Ace of Clubs (Mon-Fri 19-22, Sat-Sun 09-22)
+        run: python3 check_ace.py
+        continue-on-error: true
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          ACE_USER: ${{ secrets.ACE_USER }}
+          ACE_PASS: ${{ secrets.ACE_PASS }}
 
       - name: Save state
         run: |
           git config user.name "court-bot"
           git config user.email "court-bot@users.noreply.github.com"
-          git add state.json
+          git add state*.json || true
           git diff --cached --quiet && exit 0
           git commit -m "court-watch: update state"
           git pull --rebase
