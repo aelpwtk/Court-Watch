@@ -1,5 +1,6 @@
 {
   "alerted": [],
   "fail_alerted": false,
-  "fails": 0
+  "fails": 0,
+  "window_last": "2026-10-05"
 }
