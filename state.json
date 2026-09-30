@@ -2,9 +2,8 @@
   "alerted": [],
   "fail_alerted": false,
   "fails": 0,
-  "heartbeat": "2026-09-30",
+  "heartbeat": "2026-10-01",
   "known_days": [
-    "Wed 30/09",
     "Thu 01/10",
     "Fri 02/10",
     "Sat 03/10",
@@ -18,6 +17,7 @@
     "Sun 11/10",
     "Mon 12/10",
     "Tue 13/10",
-    "Wed 14/10"
+    "Wed 14/10",
+    "Thu 15/10"
   ]
 }
