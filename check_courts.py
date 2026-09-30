@@ -77,8 +77,10 @@ def find_hits(data, now):
     keys = row_keys(data)
     today = now.strftime("%d/%m")
     hits = {}
+    all_dates = []                                    # every day the window shows, in order
     for d in data["dateInfos"]:
         date_str = d["dateStr"]                       # e.g. "Tue 29/09"
+        all_dates.append(date_str)
         if date_str.endswith(today) and now.hour >= START_HOUR:
             continue                                  # tonight already started
         day = d.get("dayNum", d.get("DayNum"))
@@ -93,7 +95,7 @@ def find_hits(data, now):
         else:
             hits[date_str] = (f"{date_str} \u00b7 20h Court {courts_str(free[0])}"
                               f" \u2192 21h Court {courts_str(free[1])}")
-    return hits
+    return hits, all_dates
 
 
 def main():
@@ -102,7 +104,7 @@ def main():
     state["heartbeat"] = now.strftime("%Y-%m-%d")  # daily commit keeps GitHub's schedule alive
 
     try:
-        hits = find_hits(fetch(), now)
+        hits, all_dates = find_hits(fetch(), now)
     except Exception as e:
         state["fails"] = state.get("fails", 0) + 1
         print(f"Check failed ({state['fails']} in a row): {e}")
@@ -131,8 +133,27 @@ def main():
         except Exception as ne:
             print(f"ntfy failed: {ne}")
 
+    # --- fresh-day radar: days that just rolled into the 15-day window since last run ---
+    known = set(state.get("known_days", []))
+    newly_released = [] if not known else [d for d in all_dates if d not in known]
+    state["known_days"] = all_dates
+
     already = set(state.get("alerted", []))
     ordered = list(hits)                       # dateInfos order = chronological
+
+    # a freshly-released day that's already a 20:00-22:00 block = first-dibs chance
+    fresh = [d for d in ordered if d in newly_released and d not in already]
+    if fresh:
+        title = ("\U0001f3be Challenge \u2014 \U0001f195 new day open"
+                 if len(fresh) == 1 else
+                 f"\U0001f3be Challenge \u2014 \U0001f195 {len(fresh)} new days open")
+        try:
+            ntfy(title, "\n".join(hits[d] for d in fresh)
+                 + "\n\nJust released \u2014 grab it before others. Tap, then message the admin.")
+            already |= set(fresh)              # don't double-ping in the normal block below
+        except Exception as ne:
+            print(f"ntfy failed (fresh), will retry next run: {ne}")
+
     new = [day for day in ordered if day not in already]
     if new:
         lines = [hits[day] + ("  \u2190 NEW" if day in new else "") for day in ordered]
@@ -145,7 +166,7 @@ def main():
             print(f"ntfy failed, will retry next run: {ne}")
             hits = {day: v for day, v in hits.items() if day not in new}
 
-    print("Playable now:", list(hits.values()) or "none", "| new:", new or "none")
+    print("Playable now:", list(hits.values()) or "none", "| new:", new or "none", "| fresh:", fresh or "none")
     state["alerted"] = list(hits)  # days that stop being playable drop off, so a re-open pings again
     save_state(state)
 

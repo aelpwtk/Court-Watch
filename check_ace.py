@@ -193,7 +193,7 @@ def two_hour_runs(free, new_keys):
     return runs
 
 
-def build_message(free, new_keys):
+def build_message(free, new_keys, fresh=False):
     # group the just-opened slots by day so the ping stays compact and scannable
     by_day = {}
     for k in sorted(new_keys):
@@ -210,8 +210,14 @@ def build_message(free, new_keys):
         lines += ["", f"(+{extra} more slot{'s' if extra != 1 else ''} still open in your windows)"]
     lines += ["", "Book it now \u2014 tap to open."]
 
-    title = ("\u2663\ufe0f Ace of Clubs \u2014 2 hrs straight!" if runs
-             else f"\u2663\ufe0f Ace of Clubs \u2014 court open ({len(new_keys)})")
+    if fresh:
+        days = sorted(set(k[:10] for k in new_keys))
+        title = ("\u2663\ufe0f Ace of Clubs \u2014 \U0001f195 new day open" if len(days) == 1
+                 else f"\u2663\ufe0f Ace of Clubs \u2014 \U0001f195 {len(days)} new days open")
+        lines[-1] = "Just released \u2014 grab it before others. Tap to open."
+    else:
+        title = ("\u2663\ufe0f Ace of Clubs \u2014 2 hrs straight!" if runs
+                 else f"\u2663\ufe0f Ace of Clubs \u2014 court open ({len(new_keys)})")
     return title, "\n".join(lines)
 
 
@@ -246,21 +252,20 @@ def main():
                   "Watching Mon-Fri 19:00-22:00 and Sat-Sun 09:00-22:00, all courts, every ~10 min.",
                   priority="default", tags="white_check_mark")
 
-    # Learn when the club opens a new booking day (reported once)
-    if dates:
-        last = state.get("window_last")
-        if last and dates[-1] > last and not state.get("release_reported"):
-            if safe_ntfy("\u2663\ufe0f Ace of Clubs \u2014 new day opened",
-                         f"{nice_date(dates[-1])} became bookable between the last check and "
-                         f"{now.strftime('%H:%M')}. That's roughly when new days release - "
-                         "be on the booking page around then.",
-                         priority="default", tags="calendar"):
-                state["release_reported"] = True
-        if last and dates[-1] > last:
-            state["last_release_seen"] = now.strftime("%Y-%m-%d %H:%M")
-        state["window_last"] = dates[-1]
+    # --- fresh-day radar: days that just rolled into the booking window since last run ---
+    known = set(state.get("known_days", []))
+    newly_released = set() if not known else {d for d in dates if d not in known}
+    state["known_days"] = dates
 
     already = set(state.get("alerted", []))
+
+    # openings on a freshly-released day = first-dibs chance
+    fresh = [k for k in sorted(free) if k[:10] in newly_released and k not in already]
+    if fresh:
+        title, body = build_message(free, fresh, fresh=True)
+        if safe_ntfy(title, body):
+            already |= set(fresh)          # don't double-ping below
+
     new = [k for k in sorted(free) if k not in already]
     if new:
         title, body = build_message(free, new)
@@ -268,7 +273,8 @@ def main():
             free = {k: v for k, v in free.items() if k not in new}   # retry next run
 
     print("Bookable window:", dates[0] if dates else "?", "to", dates[-1] if dates else "?")
-    print("Free in your windows:", {k: v for k, v in sorted(free.items())} or "none", "| new:", new or "none")
+    print("Free in your windows:", {k: v for k, v in sorted(free.items())} or "none",
+          "| new:", new or "none", "| fresh:", fresh or "none")
     state["alerted"] = sorted(free)   # slots that get booked drop off, so a re-open pings again
     save_state(state)
 
