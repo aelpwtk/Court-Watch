@@ -1,7 +1,7 @@
 {
   "alerted": [],
   "fail_alerted": false,
-  "fails": 0,
+  "fails": 1,
   "heartbeat": "2026-10-03",
   "known_days": [
     "Sat 03/10",
