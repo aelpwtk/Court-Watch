@@ -2,8 +2,8 @@ name: Court watch
 
 on:
   schedule:
-    - cron: "*/10 * * * *"   # every 10 min (GitHub may run it a few minutes late)
-  workflow_dispatch:           # adds a manual "Run workflow" button
+    - cron: "*/10 * * * *"   # GitHub starts these late; runs queue so they never overlap
+  workflow_dispatch:           # manual "Run workflow" button
 
 permissions:
   contents: write              # lets the bot save its state files back to the repo
@@ -15,18 +15,12 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
 
-      - name: Challenge Tennis Club (20:00-22:00)
-        run: python3 check_courts.py
-        continue-on-error: true
-        env:
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-
-      - name: Ace of Clubs (Mon-Fri 19-22, Sat-Sun 09-22)
-        run: python3 check_ace.py
+      - name: Watch both clubs (checks every minute for ~13 min)
+        run: python3 watch_loop.py
         continue-on-error: true
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
@@ -34,6 +28,7 @@ jobs:
           ACE_PASS: ${{ secrets.ACE_PASS }}
 
       - name: Save state
+        if: always()
         run: |
           git config user.name "court-bot"
           git config user.email "court-bot@users.noreply.github.com"
