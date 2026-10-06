@@ -19,7 +19,7 @@ BOOKING_URL = BASE + "/booking/"
 WEEKDAY_HOURS = range(19, 22)   # slot start times 19:00, 20:00, 21:00 (ends 22:00)
 WEEKEND_HOURS = range(9, 22)    # slot start times 09:00 ... 21:00 (ends 22:00)
 STATE_FILE = "state_ace.json"
-FAIL_ALERT_AFTER = 6            # ~1 hour of failed checks before it warns you
+FAIL_ALERT_AFTER = 45           # ~45 minutes of failed checks (1 check/min) before it warns you
 BKK = timezone(timedelta(hours=7))
 TOPIC = os.environ.get("NTFY_TOPIC", "").strip()
 USER = os.environ.get("ACE_USER", "").strip()
@@ -92,9 +92,21 @@ def form_value(page, name):
     return val.group(1) if val else ""
 
 
+_OPENER = None   # logged-in session, reused by every check within one run
+
+
 def login_and_fetch_booking():
+    global _OPENER
     if not USER or not PASSWORD:
         raise AuthError("ACE_USER / ACE_PASS secrets are missing")
+    if _OPENER is not None:          # already logged in: just re-read the grid
+        try:
+            booking = get(_OPENER, BOOKING_URL)
+            if "var blockedEvents" in booking and "defaultDate:" in booking:
+                return booking
+        except Exception:
+            pass
+        _OPENER = None               # session went stale: log in again below
     opener = make_opener()
     page = get(opener, LOGIN_URL)
     nonce = form_value(page, "woocommerce-login-nonce")
@@ -111,6 +123,7 @@ def login_and_fetch_booking():
     after = get(opener, LOGIN_URL, urllib.parse.urlencode(form).encode())
     booking = get(opener, BOOKING_URL)
     if "var blockedEvents" in booking and "defaultDate:" in booking:
+        _OPENER = opener
         return booking
     err = re.search(r'class="woocommerce-error"[^>]*>(.*?)</ul>', after, re.S)
     if err:

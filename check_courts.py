@@ -14,7 +14,7 @@ SLOTS = ["20.00-21.00", "21.00-22.00"]  # need a free court in EACH hour (spaces
 START_HOUR = 20             # skip tonight once 20:00 has passed
 COURTS = 6
 STATE_FILE = "state.json"
-FAIL_ALERT_AFTER = 6        # ~1 hour of failed checks before it warns you
+FAIL_ALERT_AFTER = 45       # ~45 minutes of failed checks (1 check/min) before it warns you
 BKK = timezone(timedelta(hours=7))
 TOPIC = os.environ.get("NTFY_TOPIC", "").strip()
 
