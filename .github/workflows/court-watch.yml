@@ -15,7 +15,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
 
@@ -26,6 +26,7 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           ACE_USER: ${{ secrets.ACE_USER }}
           ACE_PASS: ${{ secrets.ACE_PASS }}
+          LOOP_SECONDS: 1680
 
       - name: Save state
         if: always()
