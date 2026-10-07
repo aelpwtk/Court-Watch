@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Runs both court checks once a minute for ~13 minutes per GitHub run.
+"""Runs the court checks (Challenge, Ace, Crystal) once a minute for the length of a GitHub run.
 GitHub only starts a run every 15-20 min, so one check per run leaves big blind
 spots; looping inside the run closes them. Runs are queued back to back by the
 workflow, so coverage is close to continuous. State files persist between
@@ -11,6 +11,12 @@ import time
 import check_ace
 import check_courts
 
+try:                      # Crystal is the newest bot: if it ever breaks, the two clubs keep running
+    import check_crystal
+except Exception as _e:   # pragma: no cover
+    check_crystal = None
+    print(f"[Crystal] could not load: {_e}")
+
 LOOP_SECONDS = int(os.environ.get("LOOP_SECONDS", 13 * 60))
 INTERVAL = int(os.environ.get("INTERVAL_SECONDS", 60))
 
@@ -21,7 +27,11 @@ def main():
     while True:
         n += 1
         t0 = time.monotonic()
-        for name, fn in (("Challenge", check_courts.main), ("Ace", check_ace.main)):
+        # Crystal goes last so a slow site can never delay the two clubs that matter most
+        bots = [("Challenge", check_courts.main), ("Ace", check_ace.main)]
+        if check_crystal:
+            bots.append(("Crystal", check_crystal.main))
+        for name, fn in bots:
             try:
                 fn()
             except Exception as e:      # one club failing must never stop the other
