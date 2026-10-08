@@ -17,17 +17,22 @@ STATE_FILE = "state.json"
 FAIL_ALERT_AFTER = 135      # ~45 minutes of failed checks (3 checks/min) before it warns you
 BKK = timezone(timedelta(hours=7))
 TOPIC = os.environ.get("NTFY_TOPIC", "").strip()
+PRIORITIES = {"min": 1, "low": 2, "default": 3, "high": 4, "urgent": 5}
 
 
-def ntfy(title, message, priority="urgent", tags="tennis"):
+def ntfy(title, message, priority="urgent", tags="large_blue_circle"):
     if not TOPIC:
         print(f"[no NTFY_TOPIC] {title}: {message}")
         return
+    # JSON publish: HTTP headers can't carry emoji or dashes, so a header-based title silently failed
+    body = {"topic": TOPIC, "title": title, "message": message,
+            "priority": PRIORITIES.get(priority, 3),
+            "tags": [t for t in tags.split(",") if t], "click": URL}
     req = urllib.request.Request(
-        f"https://ntfy.sh/{TOPIC}",
-        data=message.encode("utf-8"),
+        "https://ntfy.sh",
+        data=json.dumps(body).encode("utf-8"),
         method="POST",
-        headers={"Title": title, "Priority": priority, "Tags": tags, "Click": URL},
+        headers={"Content-Type": "application/json"},
     )
     urllib.request.urlopen(req, timeout=20).read()
 
@@ -110,7 +115,7 @@ def main():
         print(f"Check failed ({state['fails']} in a row): {e}")
         if state["fails"] >= FAIL_ALERT_AFTER and not state.get("fail_alerted"):
             try:
-                ntfy("\U0001f3be Challenge \u2014 bot stuck", f"No data for ~1 hour.\n{e}",
+                ntfy("\U0001f535 Challenge \u2014 bot stuck", f"No data for ~1 hour.\n{e}",
                      priority="default", tags="warning")
                 state["fail_alerted"] = True
             except Exception as ne:
@@ -120,7 +125,7 @@ def main():
 
     if state.get("fail_alerted"):
         try:
-            ntfy("\U0001f3be Challenge \u2014 back online", "Checks working again.", priority="default", tags="white_check_mark")
+            ntfy("\U0001f535 Challenge \u2014 back online", "Checks working again.", priority="default", tags="white_check_mark")
         except Exception as ne:
             print(f"ntfy failed: {ne}")
     state["fails"] = 0
@@ -128,7 +133,7 @@ def main():
 
     if first_run:
         try:
-            ntfy("\U0001f3be Challenge \u2014 now watching", "20:00-22:00 (court switch at 21:00 OK), next 15 days, every ~10 min.",
+            ntfy("\U0001f535 Challenge \u2014 now watching", "20:00-22:00 (court switch at 21:00 OK), next 15 days, every ~10 min.",
                  priority="default", tags="white_check_mark")
         except Exception as ne:
             print(f"ntfy failed: {ne}")
@@ -144,9 +149,9 @@ def main():
     # a freshly-released day that's already a 20:00-22:00 block = first-dibs chance
     fresh = [d for d in ordered if d in newly_released and d not in already]
     if fresh:
-        title = ("\U0001f3be Challenge \u2014 \U0001f195 new day open"
+        title = ("\U0001f535 Challenge \u2014 \U0001f195 new day open"
                  if len(fresh) == 1 else
-                 f"\U0001f3be Challenge \u2014 \U0001f195 {len(fresh)} new days open")
+                 f"\U0001f535 Challenge \u2014 \U0001f195 {len(fresh)} new days open")
         try:
             ntfy(title, "\n".join(hits[d] for d in fresh)
                  + "\n\nJust released \u2014 grab it before others. Tap, then message the admin.")
@@ -157,9 +162,9 @@ def main():
     new = [day for day in ordered if day not in already]
     if new:
         lines = [hits[day] + ("  \u2190 NEW" if day in new else "") for day in ordered]
-        title = ("\U0001f3be Challenge \u2014 20:00-22:00 open"
+        title = ("\U0001f535 Challenge \u2014 20:00-22:00 open"
                  if len(ordered) == 1 else
-                 f"\U0001f3be Challenge \u2014 {len(ordered)} days open ({len(new)} new)")
+                 f"\U0001f535 Challenge \u2014 {len(ordered)} days open ({len(new)} new)")
         try:
             ntfy(title, "\n".join(lines) + "\n\nFirst come first served \u2014 tap, then message the admin.")
         except Exception as ne:
