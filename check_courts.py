@@ -20,7 +20,7 @@ TOPIC = os.environ.get("NTFY_TOPIC", "").strip()
 PRIORITIES = {"min": 1, "low": 2, "default": 3, "high": 4, "urgent": 5}
 
 
-def ntfy(title, message, priority="urgent", tags="large_blue_circle"):
+def ntfy(title, message, priority="urgent", tags=""):
     if not TOPIC:
         print(f"[no NTFY_TOPIC] {title}: {message}")
         return
