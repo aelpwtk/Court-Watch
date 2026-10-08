@@ -28,6 +28,7 @@ STATE_FILE = "state_crystal.json"
 FAIL_ALERT_AFTER = 45            # ~45 minutes of failed checks before it warns you
 BKK = timezone(timedelta(hours=7))
 TOPIC = os.environ.get("NTFY_TOPIC", "").strip()
+PRIORITIES = {"min": 1, "low": 2, "default": 3, "high": 4, "urgent": 5}
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/130.0 Safari/537.36")
 
@@ -41,15 +42,19 @@ class RateLimited(Exception):
 
 # ---------- notifications & state ----------
 
-def ntfy(title, message, priority="urgent", tags="tennis"):
+def ntfy(title, message, priority="urgent", tags=""):
     if not TOPIC:
         print(f"[no NTFY_TOPIC] {title}: {message}")
         return
+    # JSON publish: HTTP headers can't carry emoji or dashes, so a header-based title silently failed
+    body = {"topic": TOPIC, "title": title, "message": message,
+            "priority": PRIORITIES.get(priority, 3),
+            "tags": [t for t in tags.split(",") if t], "click": BOOKING_URL}
     req = urllib.request.Request(
-        f"https://ntfy.sh/{TOPIC}",
-        data=message.encode("utf-8"),
+        "https://ntfy.sh",
+        data=json.dumps(body).encode("utf-8"),
         method="POST",
-        headers={"Title": title, "Priority": priority, "Tags": tags, "Click": BOOKING_URL},
+        headers={"Content-Type": "application/json"},
     )
     urllib.request.urlopen(req, timeout=20).read()
 
