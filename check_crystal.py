@@ -2,7 +2,7 @@
 """Crystal Sports watch: pings your phone (ntfy) when a court opens up at Crystal Sports
 (LOC001) or Crystal Sports G (LOC002), alert-only - it never books anything.
   Mon-Fri: 20:00-22:00  -> a free court at 20:00 AND a free court at 21:00 (switching courts is fine)
-  Sat-Sun: 09:00-22:00  -> any free 1-hour slot counts; 2 hours in a row is flagged
+  Sat-Sun: 09:00-22:00  -> any 2 hours in a row (a free court in EACH hour; switching courts is fine)
 The availability endpoint is public (no login). reservestatus "0" = free, "1" = taken.
 Part of the loop in watch_loop.py. Fast lane (default): every round (~20 s) re-checks all Sat/Sun
 days plus the newest day, and a rotating slice of the weekdays every 3rd round. The moment the site
@@ -21,7 +21,7 @@ BOOKING_URL = BASE + "/booking.php"
 VENUES = {"LOC001": "Crystal Sports", "LOC002": "Crystal Sports G"}
 WINDOW_DAYS = 14                 # booking page shows today + 13 days
 WEEKDAY_HOURS = (20, 21)         # both hours needed on Mon-Fri
-WEEKEND_HOURS = range(9, 22)     # slot starts 09:00 ... 21:00 on Sat-Sun
+WEEKEND_HOURS = range(9, 21)     # first hour of a 2-hour block: 09:00 ... 20:00 (block ends by 22:00)
 FREE = "0"
 CHUNK = int(os.environ.get("CRYSTAL_CHUNK", 5))        # non-newest days checked per call
 GAP = float(os.environ.get("CRYSTAL_GAP", 0.7))        # seconds between requests
@@ -153,7 +153,8 @@ def pick_dates(dates, fast=False):
 
 def find_hits(day_free, now):
     """day_free: {date: {hour: [courts]}} for the days we just checked.
-    Returns {key: info}: key is 'YYYY-MM-DD' (weekday, both hours) or 'YYYY-MM-DD HH' (weekend slot)."""
+    Only 2-hour blocks count (a free court in each of two consecutive hours; switching courts is fine).
+    Returns {key: info}: key is 'YYYY-MM-DD' (weekday, 20:00+21:00) or 'YYYY-MM-DD HH' (weekend block starting at HH)."""
     hits = {}
     today = now.strftime("%Y-%m-%d")
     for ds, hours in day_free.items():
@@ -163,13 +164,14 @@ def find_hits(day_free, now):
                 continue                                   # tonight already started
             a, b = (sorted(hours.get(h, [])) for h in WEEKDAY_HOURS)
             if a and b:
-                hits[ds] = {"kind": "day", "a": a, "b": b}
+                hits[ds] = {"kind": "day", "h": WEEKDAY_HOURS[0], "a": a, "b": b}
         else:
             for h in WEEKEND_HOURS:
                 if ds == today and h <= now.hour:
                     continue                               # already started
-                if hours.get(h):
-                    hits[f"{ds} {h:02d}"] = {"kind": "hour", "courts": sorted(hours[h])}
+                a, b = sorted(hours.get(h, [])), sorted(hours.get(h + 1, []))
+                if a and b:
+                    hits[f"{ds} {h:02d}"] = {"kind": "block", "h": h, "a": a, "b": b}
     return hits
 
 
@@ -185,53 +187,37 @@ def courts_str(courts, limit=5):
     return shown + (f" +{len(courts) - limit}" if len(courts) > limit else "")
 
 
-def day_line(ds, info):
-    same = sorted(set(info["a"]) & set(info["b"]))
+def block_text(info, limit=3):
+    h, a, b = info["h"], info["a"], info["b"]
+    same = sorted(set(a) & set(b))
     if same:
-        return f"{nice_date(ds)} · {courts_str(same)} (both hours)"
-    return f"{nice_date(ds)} · 20h {courts_str(info['a'])} → 21h {courts_str(info['b'])}"
+        return f"{h:02d}:00-{h + 2:02d}:00 {courts_str(same, limit)} (both hours)"
+    return f"{h:02d}h {courts_str(a, limit)} \u2192 {h + 1:02d}h {courts_str(b, limit)}"
 
 
-def two_hour_runs(hits, new_keys):
-    runs = []
-    for key in sorted(k for k in hits if hits[k]["kind"] == "hour"):
-        ds, h = key[:10], int(key[11:])
-        nxt = f"{ds} {h + 1:02d}"
-        if nxt in hits and (key in new_keys or nxt in new_keys):
-            a, b = hits[key]["courts"], hits[nxt]["courts"]
-            same = sorted(set(a) & set(b))
-            how = f"{courts_str(same)} both hours" if same else f"{courts_str(a)} > {courts_str(b)}"
-            runs.append(f"{nice_date(ds)} {h:02d}:00-{h + 2:02d}:00 - {how}")
-    return runs
+def day_line(ds, info):
+    return f"{nice_date(ds)} \u00b7 {block_text(info, 5)}"
 
 
 def build_message(hits, new_keys, fresh=False):
     new_keys = sorted(new_keys)
-    lines, by_day = [], {}
+    by_day = {}
     for k in new_keys:
-        if hits[k]["kind"] == "day":
-            lines.append(day_line(k, hits[k]))
-        else:
-            by_day.setdefault(k[:10], []).append(f"{k[11:]}:00 {courts_str(hits[k]['courts'], 3)}")
-    lines += [f"{nice_date(ds)} · " + ", ".join(slots) for ds, slots in by_day.items()]
-    lines.sort()
-
-    runs = two_hour_runs(hits, set(new_keys))
-    if runs:
-        lines += ["", "2 HOURS STRAIGHT:"] + runs
+        by_day.setdefault(k[:10], []).append(block_text(hits[k]))
+    lines = sorted(f"{nice_date(ds)} \u00b7 " + ", ".join(blocks) for ds, blocks in by_day.items())
     extra = len(hits) - len(new_keys)
     if extra > 0:
         lines += ["", f"(+{extra} more still open in your windows)"]
 
     if fresh:
         days = sorted(set(k[:10] for k in new_keys))
-        title = ("\U0001f48e Crystal — \U0001f195 new day open" if len(days) == 1
-                 else f"\U0001f48e Crystal — \U0001f195 {len(days)} new days open")
-        lines += ["", "Just released — grab it before others. Tap to open."]
+        title = ("\U0001f48e Crystal \u2014 \U0001f195 new day open" if len(days) == 1
+                 else f"\U0001f48e Crystal \u2014 \U0001f195 {len(days)} new days open")
+        lines += ["", "Just released \u2014 grab it before others. Tap to open."]
     else:
-        title = ("\U0001f48e Crystal — 2 hrs straight!" if runs
-                 else f"\U0001f48e Crystal — court open ({len(new_keys)})")
-        lines += ["", "Book it now — tap to open."]
+        title = (f"\U0001f48e Crystal \u2014 2 hrs open" if len(new_keys) == 1
+                 else f"\U0001f48e Crystal \u2014 2 hrs open ({len(new_keys)})")
+        lines += ["", "Book it now \u2014 tap to open."]
     return title, "\n".join(lines)
 
 
@@ -304,7 +290,7 @@ def main():
     state["fail_alerted"] = False
     if first_run:
         safe_ntfy("\U0001f48e Crystal — now watching",
-                  "Mon-Fri 20:00-22:00 and Sat-Sun 09:00-22:00, both Crystal venues, next 14 days.",
+                  "2 hours in a row: Mon-Fri 20:00-22:00, Sat-Sun 09:00-22:00, both Crystal venues, next 14 days.",
                   priority="default", tags="white_check_mark")
 
     # --- fresh-day radar: a day that just rolled into the 14-day window ---
