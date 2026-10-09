@@ -1,5 +1,7 @@
 {
-  "alerted": [],
+  "alerted": [
+    "2026-10-10 17"
+  ],
   "fail_alerted": false,
   "fails": 0,
   "known_days": [
