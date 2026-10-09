@@ -19,7 +19,7 @@ except Exception as _e:   # pragma: no cover
 
 LOOP_SECONDS = int(os.environ.get("LOOP_SECONDS", 13 * 60))
 INTERVAL = int(os.environ.get("INTERVAL_SECONDS", 20))   # Challenge is checked this often
-SLOW_EVERY = int(os.environ.get("SLOW_EVERY", 3))        # Ace + Crystal every 3rd tick (~1 min)
+SLOW_EVERY = int(os.environ.get("SLOW_EVERY", 3))        # Ace every 3rd tick (~1 min)
 
 
 def main():
@@ -28,13 +28,14 @@ def main():
     while True:
         n += 1
         t0 = time.monotonic()
-        # Challenge (plain public endpoint) every tick; Ace (needs login) and Crystal (rate
-        # limiter) at a gentler pace. Crystal goes last so a slow site can't delay the others.
+        # Challenge (plain public endpoint) every tick; Ace (needs login) at a gentler pace.
+        # Crystal runs every tick but paces itself (fast lane, backs off on its rate limiter).
+        # Crystal goes last so a slow site can't delay the others.
         bots = [("Challenge", check_courts.main)]
         if (n - 1) % SLOW_EVERY == 0:
             bots.append(("Ace", check_ace.main))
-            if check_crystal:
-                bots.append(("Crystal", check_crystal.main))
+        if check_crystal:
+            bots.append(("Crystal", check_crystal.main))
         for name, fn in bots:
             try:
                 fn()
