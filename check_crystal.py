@@ -4,8 +4,10 @@
   Mon-Fri: 20:00-22:00  -> a free court at 20:00 AND a free court at 21:00 (switching courts is fine)
   Sat-Sun: 09:00-22:00  -> any free 1-hour slot counts; 2 hours in a row is flagged
 The availability endpoint is public (no login). reservestatus "0" = free, "1" = taken.
-Part of the once-a-minute loop in watch_loop.py; each call checks only some of the 14 days
-(the newest day every time, the rest in rotation) so we stay under the site's rate limiter."""
+Part of the loop in watch_loop.py. Fast lane (default): every round (~20 s) re-checks all Sat/Sun
+days plus the newest day, and a rotating slice of the weekdays every 3rd round. The moment the site
+answers RATE_LIMITED it backs off (65 s, then 5 min, then 15 min) and drops to the old gentle pace
+(one round a minute, 5 days + newest in rotation) for 30 minutes."""
 
 import json
 import os
@@ -24,6 +26,10 @@ FREE = "0"
 CHUNK = int(os.environ.get("CRYSTAL_CHUNK", 5))        # non-newest days checked per call
 GAP = float(os.environ.get("CRYSTAL_GAP", 0.7))        # seconds between requests
 BUDGET = float(os.environ.get("CRYSTAL_BUDGET", 30))   # max seconds one round may spend
+FAST = os.environ.get("CRYSTAL_FAST", "1") != "0"      # fast lane on/off (kill switch: CRYSTAL_FAST=0)
+WD_CHUNK = 3                     # fast lane: weekdays re-checked per rotation round
+SAFE_MINUTES = 30                # after a rate limit, stay on the gentle pace this long
+BACKOFFS = (65, 300, 900)        # quiet seconds after the 1st / 2nd / 3rd+ rate limit within 20 min
 STATE_FILE = "state_crystal.json"
 FAIL_ALERT_AFTER = 45            # ~45 minutes of failed checks before it warns you
 BKK = timezone(timedelta(hours=7))
@@ -34,6 +40,9 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 
 _tick = 0                # which rotation slice we are on (per run)
 _backoff_until = 0.0     # monotonic time before which we stay quiet after RATE_LIMITED
+_safe_until = 0.0        # monotonic time until which we stay on the gentle pace
+_rl_times = []           # monotonic times of recent rate limits
+_round = 0               # how many times main() ran this run
 
 
 class RateLimited(Exception):
@@ -120,12 +129,22 @@ def free_by_hour(rows):
     return out
 
 
-def pick_dates(dates):
-    """Newest day every call (that's where fresh releases appear) + a rotating slice of the rest."""
+def pick_dates(dates, fast=False):
+    """Newest day every call (that's where fresh releases appear) + more days.
+    Fast lane: every Sat/Sun day each call (single freed slots matter there) and a rotating slice
+    of the weekdays every 3rd call (a weekday needs both 20:00 and 21:00, so it's rarer).
+    Gentle pace: just a rotating slice of the rest."""
     global _tick
     newest, others = dates[-1], dates[:-1]
     chosen = []
-    if others:
+    if fast:
+        weekend = [d for d in others if datetime.strptime(d, "%Y-%m-%d").weekday() >= 5]
+        weekdays = [d for d in others if d not in weekend]
+        chosen = list(weekend)
+        if weekdays and _tick % 3 == 0:
+            start = ((_tick // 3) * WD_CHUNK) % len(weekdays)
+            chosen += [weekdays[(start + i) % len(weekdays)] for i in range(min(WD_CHUNK, len(weekdays)))]
+    elif others:
         start = (_tick * CHUNK) % len(others)
         chosen = [others[(start + i) % len(others)] for i in range(min(CHUNK, len(others)))]
     _tick += 1
@@ -219,17 +238,21 @@ def build_message(hits, new_keys, fresh=False):
 # ---------- main ----------
 
 def main():
-    global _backoff_until
+    global _backoff_until, _safe_until, _round
     if time.monotonic() < _backoff_until:
         print("Crystal: cooling down after the site's rate limit - skipping this round.")
         return
+    _round += 1
+    fast = FAST and time.monotonic() >= _safe_until
+    if not fast and (_round - 1) % 3 != 0:
+        return                      # gentle pace: only one round in three (~1 a minute)
     state, first_run = load_state()
     now = datetime.now(BKK)
     dates = [(now + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(WINDOW_DAYS)]
 
     day_free, rate_limited, last_err, first_req = {}, False, None, True
     deadline = time.monotonic() + BUDGET
-    for ds in pick_dates(dates):
+    for ds in pick_dates(dates, fast):
         if time.monotonic() > deadline:      # slow server: leave the rest for the next round
             break
         merged, ok = {}, True
@@ -252,8 +275,17 @@ def main():
             day_free[ds] = merged
 
     if rate_limited:
-        _backoff_until = time.monotonic() + 65
-        print("Crystal: RATE_LIMITED - backing off for ~65s (not counted as a failure).")
+        now_m = time.monotonic()
+        _rl_times[:] = [t for t in _rl_times if now_m - t < 1200] + [now_m]
+        wait = BACKOFFS[min(len(_rl_times), len(BACKOFFS)) - 1]
+        _backoff_until = now_m + wait
+        _safe_until = now_m + SAFE_MINUTES * 60
+        print(f"Crystal: RATE_LIMITED ({len(_rl_times)}x in 20 min) - backing off {wait}s, "
+              f"gentle pace for {SAFE_MINUTES} min (not counted as a failure).")
+        if len(_rl_times) >= 2:
+            safe_ntfy("\U0001f48e Crystal \u2014 site pushed back",
+                      f"Rate limit hit {len(_rl_times)}x in 20 min. Backed off and slowed down for {SAFE_MINUTES} min.",
+                      priority="default", tags="warning")
     if not day_free:
         if last_err is not None:
             state["fails"] = state.get("fails", 0) + 1
