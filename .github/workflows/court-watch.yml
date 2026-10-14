@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # pinned: ubuntu-latest flips to 26.04 on Oct 19
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
@@ -36,5 +36,10 @@ jobs:
           git add state*.json || true
           git diff --cached --quiet && exit 0
           git commit -m "court-watch: update state"
-          git pull --rebase
-          git push
+          # Overlapping runs can both edit state.json; on conflict keep this run state (the newer one) and retry
+          for i in 1 2 3; do
+            git pull --rebase -X theirs && git push && exit 0
+            git rebase --abort 2>/dev/null || true
+            sleep $((i * 4))
+          done
+          exit 1
