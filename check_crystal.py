@@ -7,11 +7,15 @@ The availability endpoint is public (no login). reservestatus "0" = free, "1" = 
 Part of the loop in watch_loop.py. Fast lane (default): every round (~20 s) re-checks all Sat/Sun
 days plus the newest day, and a rotating slice of the weekdays every 3rd round. The moment the site
 answers RATE_LIMITED it backs off (65 s, then 5 min, then 15 min) and drops to the old gentle pace
-(one round a minute, 5 days + newest in rotation) for 30 minutes."""
+(one round a minute, 5 days + newest in rotation) for 30 minutes.
+If the site itself errors (HTTP 5xx, timeouts) a round stops after 2 failed days, and after 3 failed
+rounds in a row it only probes the newest day every ~45 s until the site answers again. After 20 minutes
+without a good reading you get one ping saying so (with the real duration and whether it is their server)."""
 
 import json
 import os
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
@@ -31,7 +35,10 @@ WD_CHUNK = 3                     # fast lane: weekdays re-checked per rotation r
 SAFE_MINUTES = 30                # after a rate limit, stay on the gentle pace this long
 BACKOFFS = (65, 300, 900)        # quiet seconds after the 1st / 2nd / 3rd+ rate limit within 20 min
 STATE_FILE = "state_crystal.json"
-FAIL_ALERT_AFTER = 45            # ~45 minutes of failed checks before it warns you
+FAIL_ALERT_AFTER = 45            # failed checks in a row before it warns you (count path)
+FAIL_ALERT_SECONDS = 20 * 60     # ...or this long without a good reading (time path - whichever comes first)
+ERR_STREAK_PROBE = 3             # failed rounds in a row before switching to slow probing
+ERR_PROBE_GAP = 45               # quiet seconds between probes while the site keeps erroring
 BKK = timezone(timedelta(hours=7))
 TOPIC = os.environ.get("NTFY_TOPIC", "").strip()
 PRIORITIES = {"min": 1, "low": 2, "default": 3, "high": 4, "urgent": 5}
@@ -42,6 +49,8 @@ _tick = 0                # which rotation slice we are on (per run)
 _backoff_until = 0.0     # monotonic time before which we stay quiet after RATE_LIMITED
 _safe_until = 0.0        # monotonic time until which we stay on the gentle pace
 _rl_times = []           # monotonic times of recent rate limits
+_err_streak = 0          # failed rounds in a row (site erroring, not rate limited)
+_err_until = 0.0         # monotonic time before which we only wait while the site is erroring
 _round = 0               # how many times main() ran this run
 
 
@@ -213,21 +222,23 @@ def build_message(hits, new_keys, fresh=False):
         days = sorted(set(k[:10] for k in new_keys))
         title = ("\U0001f48e Crystal \u2014 \U0001f195 new day open" if len(days) == 1
                  else f"\U0001f48e Crystal \u2014 \U0001f195 {len(days)} new days open")
-        lines += ["", "Just released \u2014 grab it before others. Tap to open."]
+        lines += ["", "Just released \u2014 grab it before others. Tap to open, then pick date \u2192 venue tab \u2192 court."]
     else:
         title = (f"\U0001f48e Crystal \u2014 2 hrs open" if len(new_keys) == 1
                  else f"\U0001f48e Crystal \u2014 2 hrs open ({len(new_keys)})")
-        lines += ["", "Book it now \u2014 tap to open."]
+        lines += ["", "Book it now \u2014 tap to open, then pick date \u2192 venue tab \u2192 court."]
     return title, "\n".join(lines)
 
 
 # ---------- main ----------
 
 def main():
-    global _backoff_until, _safe_until, _round
+    global _backoff_until, _safe_until, _round, _err_streak, _err_until
     if time.monotonic() < _backoff_until:
         print("Crystal: cooling down after the site's rate limit - skipping this round.")
         return
+    if time.monotonic() < _err_until:
+        return                      # site is erroring: wait between probes instead of hammering it
     _round += 1
     fast = FAST and time.monotonic() >= _safe_until
     if not fast and (_round - 1) % 3 != 0:
@@ -236,9 +247,10 @@ def main():
     now = datetime.now(BKK)
     dates = [(now + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(WINDOW_DAYS)]
 
-    day_free, rate_limited, last_err, first_req = {}, False, None, True
+    day_free, rate_limited, last_err, first_req, errs = {}, False, None, True, 0
     deadline = time.monotonic() + BUDGET
-    for ds in pick_dates(dates, fast):
+    probing = _err_streak >= ERR_STREAK_PROBE      # site has been erroring: just poke the newest day
+    for ds in ([dates[-1]] if probing else pick_dates(dates, fast)):
         if time.monotonic() > deadline:      # slow server: leave the rest for the next round
             break
         merged, ok = {}, True
@@ -259,6 +271,10 @@ def main():
             break
         if ok:                      # only trust a day when BOTH venues answered
             day_free[ds] = merged
+        else:
+            errs += 1
+            if errs >= 2:           # the site is erroring - stop this round instead of hammering it
+                break
 
     if rate_limited:
         now_m = time.monotonic()
@@ -272,13 +288,29 @@ def main():
             safe_ntfy("\U0001f48e Crystal \u2014 site pushed back",
                       f"Rate limit hit {len(_rl_times)}x in 20 min. Backed off and slowed down for {SAFE_MINUTES} min.",
                       priority="default", tags="warning")
+    if day_free:
+        _err_streak = 0
+    elif last_err is not None:
+        _err_streak += 1
+        if _err_streak >= ERR_STREAK_PROBE:
+            _err_until = time.monotonic() + ERR_PROBE_GAP
     if not day_free:
         if last_err is not None:
             state["fails"] = state.get("fails", 0) + 1
-            print(f"Crystal check failed ({state['fails']} in a row): {last_err}")
-            if state["fails"] >= FAIL_ALERT_AFTER and not state.get("fail_alerted"):
-                if safe_ntfy("\U0001f48e Crystal — bot stuck", f"No data for ~1 hour.\n{last_err}",
-                             priority="default", tags="warning"):
+            state.setdefault("fail_since", int(time.time()))
+            mins = int((time.time() - state["fail_since"]) // 60)
+            print(f"Crystal check failed ({state['fails']} in a row, {mins} min): {last_err}")
+            due = state["fails"] >= FAIL_ALERT_AFTER or time.time() - state["fail_since"] >= FAIL_ALERT_SECONDS
+            if due and not state.get("fail_alerted"):
+                site_down = isinstance(last_err, urllib.error.HTTPError) and last_err.code >= 500
+                if site_down:
+                    title = "\U0001f48e Crystal — site is down"
+                    body = (f"No data for ~{mins} min: {last_err}\nTheir server is erroring, not the bot. "
+                            "Still probing - you get a ping when it is back.")
+                else:
+                    title = "\U0001f48e Crystal — bot stuck"
+                    body = f"No data for ~{mins} min.\n{last_err}"
+                if safe_ntfy(title, body, priority="default", tags="warning"):
                     state["fail_alerted"] = True
             save_state(state)
         return
@@ -288,6 +320,7 @@ def main():
                   priority="default", tags="white_check_mark")
     state["fails"] = 0
     state["fail_alerted"] = False
+    state.pop("fail_since", None)
     if first_run:
         safe_ntfy("\U0001f48e Crystal — now watching",
                   "2 hours in a row: Mon-Fri 20:00-22:00, Sat-Sun 09:00-22:00, both Crystal venues, next 14 days.",
