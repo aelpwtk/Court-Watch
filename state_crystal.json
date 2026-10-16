@@ -1,7 +1,8 @@
 {
   "alerted": [],
   "fail_alerted": false,
-  "fails": 0,
+  "fail_since": 1792122138,
+  "fails": 3,
   "known_days": [
     "2026-10-16",
     "2026-10-17",
