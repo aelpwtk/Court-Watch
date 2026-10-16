@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Runs the court checks (Challenge, Ace, Crystal) once a minute for the length of a GitHub run.
+"""Runs the court checks (Challenge, Crystal) once a minute for the length of a GitHub run.
 GitHub only starts a run every 15-20 min, so one check per run leaves big blind
 spots; looping inside the run closes them. Runs are queued back to back by the
 workflow, so coverage is close to continuous. State files persist between
@@ -8,10 +8,9 @@ iterations on disk and are committed once at the end of the run."""
 import os
 import time
 
-import check_ace
 import check_courts
 
-try:                      # Crystal is the newest bot: if it ever breaks, the two clubs keep running
+try:                      # Crystal is the newest bot: if it ever breaks, Challenge keeps running
     import check_crystal
 except Exception as _e:   # pragma: no cover
     check_crystal = None
@@ -19,7 +18,6 @@ except Exception as _e:   # pragma: no cover
 
 LOOP_SECONDS = int(os.environ.get("LOOP_SECONDS", 13 * 60))
 INTERVAL = int(os.environ.get("INTERVAL_SECONDS", 20))   # Challenge is checked this often
-SLOW_EVERY = int(os.environ.get("SLOW_EVERY", 3))        # Ace every 3rd tick (~1 min)
 
 
 def main():
@@ -28,12 +26,10 @@ def main():
     while True:
         n += 1
         t0 = time.monotonic()
-        # Challenge (plain public endpoint) every tick; Ace (needs login) at a gentler pace.
+        # Challenge (plain public endpoint) every tick.
         # Crystal runs every tick but paces itself (fast lane, backs off on its rate limiter).
         # Crystal goes last so a slow site can't delay the others.
         bots = [("Challenge", check_courts.main)]
-        if (n - 1) % SLOW_EVERY == 0:
-            bots.append(("Ace", check_ace.main))
         if check_crystal:
             bots.append(("Crystal", check_crystal.main))
         for name, fn in bots:

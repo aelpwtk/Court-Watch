@@ -19,13 +19,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Watch both clubs (checks every minute for ~13 min)
+      - name: Watch the clubs (checks every minute for ~13 min)
         run: python3 watch_loop.py
         continue-on-error: true
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-          ACE_USER: ${{ secrets.ACE_USER }}
-          ACE_PASS: ${{ secrets.ACE_PASS }}
           LOOP_SECONDS: 1680
 
       - name: Save state
