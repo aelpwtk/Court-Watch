@@ -85,12 +85,12 @@ def row_keys(data):
     return [norm[s] for s in SLOTS]
 
 
-TH_DAYS = {"Mon": "จ.", "Tue": "อ.", "Wed": "พ.", "Thu": "พฤ.",
-           "Fri": "ศ.", "Sat": "ส.", "Sun": "อา."}
+TH_DAYS = {"Mon": "จันทร์", "Tue": "อังคาร", "Wed": "พุธ", "Thu": "พฤหัสบดี",
+           "Fri": "ศุกร์", "Sat": "เสาร์", "Sun": "อาทิตย์"}
 
 
 def th_date(date_str):
-    """'Tue 29/09' -> 'อ. 29/09' (state keeps the site's own English text; only messages are Thai)."""
+    """'Tue 29/09' -> 'อังคาร 29/09' (state keeps the site's own English text; only messages are Thai)."""
     head, _, rest = str(date_str).partition(" ")
     return f"{TH_DAYS.get(head, head)} {rest}".strip()
 
