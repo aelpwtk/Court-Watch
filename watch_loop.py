@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Runs the court checks (Challenge, Crystal) once a minute for the length of a GitHub run.
+"""Runs the court checks (Challenge) once a minute for the length of a GitHub run.
 GitHub only starts a run every 15-20 min, so one check per run leaves big blind
 spots; looping inside the run closes them. Runs are queued back to back by the
 workflow, so coverage is close to continuous. State files persist between
@@ -9,12 +9,6 @@ import os
 import time
 
 import check_courts
-
-try:                      # Crystal is the newest bot: if it ever breaks, Challenge keeps running
-    import check_crystal
-except Exception as _e:   # pragma: no cover
-    check_crystal = None
-    print(f"[Crystal] could not load: {_e}")
 
 LOOP_SECONDS = int(os.environ.get("LOOP_SECONDS", 13 * 60))
 INTERVAL = int(os.environ.get("INTERVAL_SECONDS", 20))   # Challenge is checked this often
@@ -27,15 +21,11 @@ def main():
         n += 1
         t0 = time.monotonic()
         # Challenge (plain public endpoint) every tick.
-        # Crystal runs every tick but paces itself (fast lane, backs off on its rate limiter).
-        # Crystal goes last so a slow site can't delay the others.
         bots = [("Challenge", check_courts.main)]
-        if check_crystal:
-            bots.append(("Crystal", check_crystal.main))
         for name, fn in bots:
             try:
                 fn()
-            except Exception as e:      # one club failing must never stop the other
+            except Exception as e:      # a failing check must never stop the loop
                 print(f"[{name}] unexpected error: {e}")
         wait = INTERVAL - (time.monotonic() - t0)
         if time.monotonic() + max(wait, 0) >= end:

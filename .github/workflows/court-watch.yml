@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Watch the clubs (checks every minute for ~13 min)
+      - name: Watch Challenge (checks every minute for ~13 min)
         run: python3 watch_loop.py
         continue-on-error: true
         env:

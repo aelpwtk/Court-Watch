@@ -2,11 +2,10 @@ import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 os.environ["NTFY_TOPIC"] = "main-topic"
 os.environ["NTFY_TOPIC_SHARED"] = "shared-topic"
-os.environ["CRYSTAL_GAP"] = "0"
 
-import check_courts, check_crystal
+import check_courts
 
-for mod in (check_courts, check_crystal):
+for mod in (check_courts,):
     name = mod.__name__
     sent = []
     mod._publish = lambda topic, title, msg, prio, tags: sent.append(topic)
