@@ -117,10 +117,10 @@ def find_hits(data, now):
             continue
         same = sorted(set(free[0]) & set(free[1]))
         if same:
-            hits[date_str] = f"{th_date(date_str)} \u00b7 คอร์ท {courts_str(same)} (ทั้ง 2 ชม.)"
+            hits[date_str] = f"{th_date(date_str)} \u00b7 court#{courts_str(same)} (ทั้ง 2 ชม.)"
         else:
-            hits[date_str] = (f"{th_date(date_str)} \u00b7 20:00 คอร์ท {courts_str(free[0])}"
-                              f" \u2192 21:00 คอร์ท {courts_str(free[1])}")
+            hits[date_str] = (f"{th_date(date_str)} \u00b7 20:00 court#{courts_str(free[0])}"
+                              f" \u2192 21:00 court#{courts_str(free[1])}")
     return hits, all_dates
 
 

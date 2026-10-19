@@ -21,8 +21,8 @@ def data(free_by_day):
 from datetime import datetime
 now = datetime(2026, 10, 19, 12, 0, tzinfo=c.BKK)
 hits, all_dates = c.find_hits(data({"Tue 20/10": ([3, 4], [3]), "Wed 21/10": ([1], [2])}), now)
-assert hits["Tue 20/10"] == "อังคาร 20/10 · คอร์ท 3 (ทั้ง 2 ชม.)", hits
-assert hits["Wed 21/10"] == "พุธ 21/10 · 20:00 คอร์ท 1 → 21:00 คอร์ท 2", hits
+assert hits["Tue 20/10"] == "อังคาร 20/10 · court#3 (ทั้ง 2 ชม.)", hits
+assert hits["Wed 21/10"] == "พุธ 21/10 · 20:00 court#1 → 21:00 court#2", hits
 assert list(hits) == ["Tue 20/10", "Wed 21/10"]         # state keys stay the site's English text
 
 # full alert path: capture what would be sent
