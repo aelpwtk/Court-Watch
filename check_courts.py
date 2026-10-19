@@ -170,9 +170,9 @@ def main():
     # a freshly-released day that's already a 20:00-22:00 block = first-dibs chance
     fresh = [d for d in ordered if d in newly_released and d not in already]
     if fresh:
-        title = ("\U0001f535 Challenge \u2014 \U0001f195 วันใหม่เปิดจองแล้ว"
+        title = ("\U0001f6a8\U0001f195 วันใหม่เปิดจองแล้วจ้าวไอต้าว"
                  if len(fresh) == 1 else
-                 f"\U0001f535 Challenge \u2014 \U0001f195 วันใหม่เปิดจอง {len(fresh)} วัน")
+                 f"\U0001f6a8\U0001f195 วันใหม่เปิดจอง {len(fresh)} วันแล้วจ้าวไอต้าว")
         try:
             ntfy(title, "\n".join(hits[d] for d in fresh)
                  + "\n\nเพิ่งเปิดจอง \u2014 รีบจองก่อนคนอื่น! กดแล้วทักแอดมิน", share=True)
@@ -183,9 +183,9 @@ def main():
     new = [day for day in ordered if day not in already]
     if new:
         lines = [hits[day] + ("  \u2190 ใหม่" if day in new else "") for day in ordered]
-        title = ("\U0001f535 Challenge \u2014 คอร์ทว่าง 20:00-22:00"
+        title = ("\U0001f6a8\U0001f3be คอร์ทว่างแล้วจ้าวไอต้าว"
                  if len(ordered) == 1 else
-                 f"\U0001f535 Challenge \u2014 คอร์ทว่าง {len(ordered)} วัน (ใหม่ {len(new)})")
+                 f"\U0001f6a8\U0001f3be คอร์ทว่าง {len(ordered)} วันแล้วจ้าวไอต้าว (ใหม่ {len(new)})")
         try:
             ntfy(title, "\n".join(lines) + "\n\nใครมาก่อนได้ก่อน \u2014 กดแล้วทักแอดมิน", share=True)
         except Exception as ne:

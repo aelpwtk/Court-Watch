@@ -3,6 +3,9 @@ name: Test notification
 on:
   workflow_dispatch:           # manual only: sends one clearly-labelled test ping
     inputs:
+      title:
+        description: "Title of the test ping"
+        default: "\U0001f9ea ทดสอบแจ้งเตือน Court-Watch"
       message:
         description: "Text of the test ping"
         default: "ทดสอบการแจ้งเตือน ถ้าเห็นข้อความนี้ แปลว่าแจ้งเตือนคอร์ทว่างจะมาถึงคุณ (ตอนนี้ยังไม่มีคอร์ทว่าง)"
@@ -18,13 +21,14 @@ jobs:
       NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
       NTFY_TOPIC_SHARED: ${{ secrets.NTFY_TOPIC_SHARED }}
       TEST_MESSAGE: ${{ inputs.message }}
+      TEST_TITLE: ${{ inputs.title }}
     steps:
       - name: Send test to the main topic
         run: |
           python3 - <<'PY'
           import json, os, urllib.request
           def send(topic):
-              body = {"topic": topic, "title": "\U0001f9ea ทดสอบแจ้งเตือน Court-Watch", "priority": 3,
+              body = {"topic": topic, "title": os.environ["TEST_TITLE"], "priority": 3,
                       "message": os.environ["TEST_MESSAGE"]}
               req = urllib.request.Request("https://ntfy.sh", data=json.dumps(body).encode(), method="POST",
                                            headers={"Content-Type": "application/json"})
@@ -38,7 +42,7 @@ jobs:
           if [ -z "$NTFY_TOPIC_SHARED" ]; then echo "NTFY_TOPIC_SHARED secret is not set"; exit 1; fi
           python3 - <<'PY'
           import json, os, urllib.request
-          body = {"topic": os.environ["NTFY_TOPIC_SHARED"].strip(), "title": "\U0001f9ea ทดสอบแจ้งเตือน Court-Watch", "priority": 3,
+          body = {"topic": os.environ["NTFY_TOPIC_SHARED"].strip(), "title": os.environ["TEST_TITLE"], "priority": 3,
                   "message": os.environ["TEST_MESSAGE"]}
           req = urllib.request.Request("https://ntfy.sh", data=json.dumps(body).encode(), method="POST",
                                        headers={"Content-Type": "application/json"})

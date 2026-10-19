@@ -33,6 +33,7 @@ c.fetch = lambda: data({"Tue 20/10": ([3], [3])})
 c.main()                                                  # first run: 'now watching' (English health ping) + alert
 alerts = [s for s in sent if s[2].get("share")]
 assert len(alerts) == 1, sent
+assert alerts[0][0] == "\U0001f6a8\U0001f3be คอร์ทว่างแล้วจ้าวไอต้าว", alerts[0][0]
 assert "คอร์ทว่าง" in alerts[0][0] and "อ. 20/10" in alerts[0][1] and "ใครมาก่อนได้ก่อน" in alerts[0][1], alerts
 assert not any(s[2].get("share") for s in sent if "now watching" in s[0])   # health ping never shared
 print("ALL PASS")
