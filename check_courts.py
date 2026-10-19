@@ -85,6 +85,16 @@ def row_keys(data):
     return [norm[s] for s in SLOTS]
 
 
+TH_DAYS = {"Mon": "จ.", "Tue": "อ.", "Wed": "พ.", "Thu": "พฤ.",
+           "Fri": "ศ.", "Sat": "ส.", "Sun": "อา."}
+
+
+def th_date(date_str):
+    """'Tue 29/09' -> 'อ. 29/09' (state keeps the site's own English text; only messages are Thai)."""
+    head, _, rest = str(date_str).partition(" ")
+    return f"{TH_DAYS.get(head, head)} {rest}".strip()
+
+
 def courts_str(courts):
     return "/".join(str(c) for c in courts)
 
@@ -107,10 +117,10 @@ def find_hits(data, now):
             continue
         same = sorted(set(free[0]) & set(free[1]))
         if same:
-            hits[date_str] = f"{date_str} \u00b7 Court {courts_str(same)} (both hours)"
+            hits[date_str] = f"{th_date(date_str)} \u00b7 คอร์ท {courts_str(same)} (ทั้ง 2 ชม.)"
         else:
-            hits[date_str] = (f"{date_str} \u00b7 20h Court {courts_str(free[0])}"
-                              f" \u2192 21h Court {courts_str(free[1])}")
+            hits[date_str] = (f"{th_date(date_str)} \u00b7 20:00 คอร์ท {courts_str(free[0])}"
+                              f" \u2192 21:00 คอร์ท {courts_str(free[1])}")
     return hits, all_dates
 
 
@@ -160,24 +170,24 @@ def main():
     # a freshly-released day that's already a 20:00-22:00 block = first-dibs chance
     fresh = [d for d in ordered if d in newly_released and d not in already]
     if fresh:
-        title = ("\U0001f535 Challenge \u2014 \U0001f195 new day open"
+        title = ("\U0001f535 Challenge \u2014 \U0001f195 วันใหม่เปิดจองแล้ว"
                  if len(fresh) == 1 else
-                 f"\U0001f535 Challenge \u2014 \U0001f195 {len(fresh)} new days open")
+                 f"\U0001f535 Challenge \u2014 \U0001f195 วันใหม่เปิดจอง {len(fresh)} วัน")
         try:
             ntfy(title, "\n".join(hits[d] for d in fresh)
-                 + "\n\nJust released \u2014 grab it before others. Tap, then message the admin.", share=True)
+                 + "\n\nเพิ่งเปิดจอง \u2014 รีบจองก่อนคนอื่น! กดแล้วทักแอดมิน", share=True)
             already |= set(fresh)              # don't double-ping in the normal block below
         except Exception as ne:
             print(f"ntfy failed (fresh), will retry next run: {ne}")
 
     new = [day for day in ordered if day not in already]
     if new:
-        lines = [hits[day] + ("  \u2190 NEW" if day in new else "") for day in ordered]
-        title = ("\U0001f535 Challenge \u2014 20:00-22:00 open"
+        lines = [hits[day] + ("  \u2190 ใหม่" if day in new else "") for day in ordered]
+        title = ("\U0001f535 Challenge \u2014 คอร์ทว่าง 20:00-22:00"
                  if len(ordered) == 1 else
-                 f"\U0001f535 Challenge \u2014 {len(ordered)} days open ({len(new)} new)")
+                 f"\U0001f535 Challenge \u2014 คอร์ทว่าง {len(ordered)} วัน (ใหม่ {len(new)})")
         try:
-            ntfy(title, "\n".join(lines) + "\n\nFirst come first served \u2014 tap, then message the admin.", share=True)
+            ntfy(title, "\n".join(lines) + "\n\nใครมาก่อนได้ก่อน \u2014 กดแล้วทักแอดมิน", share=True)
         except Exception as ne:
             print(f"ntfy failed, will retry next run: {ne}")
             hits = {day: v for day, v in hits.items() if day not in new}

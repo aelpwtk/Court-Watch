@@ -19,8 +19,8 @@ jobs:
           python3 - <<'PY'
           import json, os, urllib.request
           def send(topic):
-              body = {"topic": topic, "title": "\U0001f9ea Court-Watch test", "priority": 3,
-                      "message": "Test notification. If you can read this, court alerts will reach you. No court is open."}
+              body = {"topic": topic, "title": "\U0001f9ea ทดสอบแจ้งเตือน Court-Watch", "priority": 3,
+                      "message": "ทดสอบการแจ้งเตือน ถ้าเห็นข้อความนี้ แปลว่าแจ้งเตือนคอร์ทว่างจะมาถึงคุณ (ตอนนี้ยังไม่มีคอร์ทว่าง)"}
               req = urllib.request.Request("https://ntfy.sh", data=json.dumps(body).encode(), method="POST",
                                            headers={"Content-Type": "application/json"})
               urllib.request.urlopen(req, timeout=20).read()
@@ -33,8 +33,8 @@ jobs:
           if [ -z "$NTFY_TOPIC_SHARED" ]; then echo "NTFY_TOPIC_SHARED secret is not set"; exit 1; fi
           python3 - <<'PY'
           import json, os, urllib.request
-          body = {"topic": os.environ["NTFY_TOPIC_SHARED"].strip(), "title": "\U0001f9ea Court-Watch test", "priority": 3,
-                  "message": "Test notification. If you can read this, court alerts will reach you. No court is open."}
+          body = {"topic": os.environ["NTFY_TOPIC_SHARED"].strip(), "title": "\U0001f9ea ทดสอบแจ้งเตือน Court-Watch", "priority": 3,
+                  "message": "ทดสอบการแจ้งเตือน ถ้าเห็นข้อความนี้ แปลว่าแจ้งเตือนคอร์ทว่างจะมาถึงคุณ (ตอนนี้ยังไม่มีคอร์ทว่าง)"}
           req = urllib.request.Request("https://ntfy.sh", data=json.dumps(body).encode(), method="POST",
                                        headers={"Content-Type": "application/json"})
           urllib.request.urlopen(req, timeout=20).read()
