@@ -17,15 +17,13 @@ STATE_FILE = "state.json"
 FAIL_ALERT_AFTER = 135      # ~45 minutes of failed checks (3 checks/min) before it warns you
 BKK = timezone(timedelta(hours=7))
 TOPIC = os.environ.get("NTFY_TOPIC", "").strip()
+SHARED_TOPIC = os.environ.get("NTFY_TOPIC_SHARED", "").strip()   # court alerts only, for people Marc shares them with
 PRIORITIES = {"min": 1, "low": 2, "default": 3, "high": 4, "urgent": 5}
 
 
-def ntfy(title, message, priority="urgent", tags=""):
-    if not TOPIC:
-        print(f"[no NTFY_TOPIC] {title}: {message}")
-        return
+def _publish(topic, title, message, priority, tags):
     # JSON publish: HTTP headers can't carry emoji or dashes, so a header-based title silently failed
-    body = {"topic": TOPIC, "title": title, "message": message,
+    body = {"topic": topic, "title": title, "message": message,
             "priority": PRIORITIES.get(priority, 3),
             "tags": [t for t in tags.split(",") if t], "click": URL}
     req = urllib.request.Request(
@@ -35,6 +33,19 @@ def ntfy(title, message, priority="urgent", tags=""):
         headers={"Content-Type": "application/json"},
     )
     urllib.request.urlopen(req, timeout=20).read()
+
+
+def ntfy(title, message, priority="urgent", tags="", share=False):
+    """share=True is for real court alerts only: they also go to the shared topic (health pings never do)."""
+    if not TOPIC:
+        print(f"[no NTFY_TOPIC] {title}: {message}")
+        return
+    _publish(TOPIC, title, message, priority, tags)       # a failure here raises, so the caller retries
+    if share and SHARED_TOPIC:
+        try:
+            _publish(SHARED_TOPIC, title, message, priority, tags)
+        except Exception as e:                            # best effort: never cause a duplicate alert for Marc
+            print(f"shared ntfy failed: {e}")
 
 
 def load_state():
@@ -154,7 +165,7 @@ def main():
                  f"\U0001f535 Challenge \u2014 \U0001f195 {len(fresh)} new days open")
         try:
             ntfy(title, "\n".join(hits[d] for d in fresh)
-                 + "\n\nJust released \u2014 grab it before others. Tap, then message the admin.")
+                 + "\n\nJust released \u2014 grab it before others. Tap, then message the admin.", share=True)
             already |= set(fresh)              # don't double-ping in the normal block below
         except Exception as ne:
             print(f"ntfy failed (fresh), will retry next run: {ne}")
@@ -166,7 +177,7 @@ def main():
                  if len(ordered) == 1 else
                  f"\U0001f535 Challenge \u2014 {len(ordered)} days open ({len(new)} new)")
         try:
-            ntfy(title, "\n".join(lines) + "\n\nFirst come first served \u2014 tap, then message the admin.")
+            ntfy(title, "\n".join(lines) + "\n\nFirst come first served \u2014 tap, then message the admin.", share=True)
         except Exception as ne:
             print(f"ntfy failed, will retry next run: {ne}")
             hits = {day: v for day, v in hits.items() if day not in new}

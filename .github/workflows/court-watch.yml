@@ -24,6 +24,7 @@ jobs:
         continue-on-error: true
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_TOPIC_SHARED: ${{ secrets.NTFY_TOPIC_SHARED }}   # optional: court alerts only, for sharing
           LOOP_SECONDS: 1680
 
       - name: Save state

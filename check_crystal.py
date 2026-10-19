@@ -41,6 +41,7 @@ ERR_STREAK_PROBE = 3             # failed rounds in a row before switching to sl
 ERR_PROBE_GAP = 45               # quiet seconds between probes while the site keeps erroring
 BKK = timezone(timedelta(hours=7))
 TOPIC = os.environ.get("NTFY_TOPIC", "").strip()
+SHARED_TOPIC = os.environ.get("NTFY_TOPIC_SHARED", "").strip()   # court alerts only, for people Marc shares them with
 PRIORITIES = {"min": 1, "low": 2, "default": 3, "high": 4, "urgent": 5}
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/130.0 Safari/537.36")
@@ -60,12 +61,9 @@ class RateLimited(Exception):
 
 # ---------- notifications & state ----------
 
-def ntfy(title, message, priority="urgent", tags=""):
-    if not TOPIC:
-        print(f"[no NTFY_TOPIC] {title}: {message}")
-        return
+def _publish(topic, title, message, priority, tags):
     # JSON publish: HTTP headers can't carry emoji or dashes, so a header-based title silently failed
-    body = {"topic": TOPIC, "title": title, "message": message,
+    body = {"topic": topic, "title": title, "message": message,
             "priority": PRIORITIES.get(priority, 3),
             "tags": [t for t in tags.split(",") if t], "click": BOOKING_URL}
     req = urllib.request.Request(
@@ -75,6 +73,19 @@ def ntfy(title, message, priority="urgent", tags=""):
         headers={"Content-Type": "application/json"},
     )
     urllib.request.urlopen(req, timeout=20).read()
+
+
+def ntfy(title, message, priority="urgent", tags="", share=False):
+    """share=True is for real court alerts only: they also go to the shared topic (health pings never do)."""
+    if not TOPIC:
+        print(f"[no NTFY_TOPIC] {title}: {message}")
+        return
+    _publish(TOPIC, title, message, priority, tags)       # a failure here raises, so the caller retries
+    if share and SHARED_TOPIC:
+        try:
+            _publish(SHARED_TOPIC, title, message, priority, tags)
+        except Exception as e:                            # best effort: never cause a duplicate alert for Marc
+            print(f"shared ntfy failed: {e}")
 
 
 def safe_ntfy(*args, **kwargs):
@@ -337,13 +348,13 @@ def main():
     fresh = [k for k in sorted(hits) if k[:10] in newly_released and k not in already]
     if fresh:
         title, body = build_message(hits, fresh, fresh=True)
-        if safe_ntfy(title, body):
+        if safe_ntfy(title, body, share=True):
             already |= set(fresh)
 
     new = [k for k in sorted(hits) if k not in already]
     if new:
         title, body = build_message(hits, new)
-        if not safe_ntfy(title, body):
+        if not safe_ntfy(title, body, share=True):
             hits = {k: v for k, v in hits.items() if k not in new}   # retry next time
 
     # keep memory of days we did NOT look at this call; refresh the ones we did
