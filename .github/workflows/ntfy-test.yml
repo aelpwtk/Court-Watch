@@ -1,0 +1,42 @@
+name: Test notification
+
+on:
+  workflow_dispatch:           # manual only: sends one clearly-labelled test ping
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    env:
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      NTFY_TOPIC_SHARED: ${{ secrets.NTFY_TOPIC_SHARED }}
+    steps:
+      - name: Send test to the main topic
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          def send(topic):
+              body = {"topic": topic, "title": "\U0001f9ea Court-Watch test", "priority": 3,
+                      "message": "Test notification. If you can read this, court alerts will reach you. No court is open."}
+              req = urllib.request.Request("https://ntfy.sh", data=json.dumps(body).encode(), method="POST",
+                                           headers={"Content-Type": "application/json"})
+              urllib.request.urlopen(req, timeout=20).read()
+          send(os.environ["NTFY_TOPIC"].strip())
+          print("sent to the main topic")
+          PY
+
+      - name: Send test to the shared topic
+        run: |
+          if [ -z "$NTFY_TOPIC_SHARED" ]; then echo "NTFY_TOPIC_SHARED secret is not set"; exit 1; fi
+          python3 - <<'PY'
+          import json, os, urllib.request
+          body = {"topic": os.environ["NTFY_TOPIC_SHARED"].strip(), "title": "\U0001f9ea Court-Watch test", "priority": 3,
+                  "message": "Test notification. If you can read this, court alerts will reach you. No court is open."}
+          req = urllib.request.Request("https://ntfy.sh", data=json.dumps(body).encode(), method="POST",
+                                       headers={"Content-Type": "application/json"})
+          urllib.request.urlopen(req, timeout=20).read()
+          print("sent to the shared topic")
+          PY
