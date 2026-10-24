@@ -1,8 +1,7 @@
 {
   "alerted": [
     "Sun 25/10",
-    "Mon 02/11",
-    "Wed 04/11"
+    "Mon 02/11"
   ],
   "fail_alerted": false,
   "fails": 0,
