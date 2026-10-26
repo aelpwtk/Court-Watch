@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write              # lets the bot save its state files back to the repo
+  actions: write               # lets a run queue its own successor (self-chaining)
 
 concurrency:
   group: court-watch
@@ -18,6 +19,17 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
+
+      # Self-chaining: queue the NEXT run right now. It waits in the concurrency group and starts the
+      # moment this one ends, so coverage no longer depends on GitHub's flaky cron. The cron stays as a backup.
+      # Only one run can be pending, so this never piles up.
+      - name: Queue next run
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X POST "repos/${{ github.repository }}/actions/workflows/court-watch.yml/dispatches" \
+            -f ref="${{ github.event.repository.default_branch }}" && echo "Next run queued."
 
       - name: Watch Challenge (checks every minute for ~13 min)
         run: python3 watch_loop.py
