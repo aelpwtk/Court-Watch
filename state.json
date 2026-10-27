@@ -1,7 +1,5 @@
 {
-  "alerted": [
-    "Wed 28/10"
-  ],
+  "alerted": [],
   "fail_alerted": false,
   "fails": 0,
   "heartbeat": "2026-10-27",
