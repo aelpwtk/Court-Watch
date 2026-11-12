@@ -2,16 +2,20 @@ name: Court watch
 
 on:
   schedule:
-    - cron: "*/10 * * * *"   # GitHub starts these late; runs queue so they never overlap
-  workflow_dispatch:           # manual "Run workflow" button
+    - cron: "*/10 * * * *"   # backup only: GitHub starts these a few times a day at best
+  workflow_dispatch:           # manual "Run workflow" button, and how each run queues the next
 
 permissions:
   contents: write              # lets the bot save its state files back to the repo
-  actions: write               # lets a run queue its own successor (self-chaining)
+  actions: write               # lets a run queue its own successor and restart the doctor
 
 concurrency:
   group: court-watch
   cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
 
 jobs:
   check:
@@ -20,20 +24,30 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Note the start time
+        run: echo "T0=$(date +%s)" >> "$GITHUB_ENV"
+
       # Self-chaining: queue the NEXT run right now. It waits in the concurrency group and starts the
-      # moment this one ends, so coverage no longer depends on GitHub's flaky cron. The cron stays as a backup.
+      # moment this one ends, so coverage does not depend on GitHub's flaky cron.
       # Only one run can be pending, so this never piles up.
       - name: Queue next run
         continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          gh api -X POST "repos/${{ github.repository }}/actions/workflows/court-watch.yml/dispatches" \
-            -f ref="${{ github.event.repository.default_branch }}" && echo "Next run queued."
+          for i in 1 2 3; do
+            gh api -X POST "repos/${{ github.repository }}/actions/workflows/court-watch.yml/dispatches" \
+              -f ref="${{ github.event.repository.default_branch }}" && echo "Next run queued." && exit 0
+            sleep $((i * 5))
+          done
+          exit 1
 
-      - name: Watch Challenge (checks every minute for ~13 min)
-        run: python3 watch_loop.py
+      # The doctor is a long loop of its own (court-doctor.yml). If it is not running, restart it.
+      # 150 = minutes after which a doctor run counts as stuck (its timeout is 135).
+      - name: Keep the doctor alive
         continue-on-error: true
+        run: python3 doctor.py --ensure court-doctor.yml 150
+
+      - name: Watch Challenge (checks every 20 s for ~28 min)
+        run: python3 watch_loop.py       # a crash here fails the run on purpose, so the doctor sees it
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           NTFY_TOPIC_SHARED: ${{ secrets.NTFY_TOPIC_SHARED }}   # optional: court alerts only, for sharing
@@ -54,3 +68,17 @@ jobs:
             sleep $((i * 4))
           done
           exit 1
+
+      # Belt and braces: if the queued successor vanished (or was never queued), queue one before leaving.
+      - name: Make sure a successor is queued
+        if: always()
+        continue-on-error: true
+        run: python3 doctor.py --successor court-watch.yml
+
+      # Safety brake: if this run ended within 5 minutes something crashed. Wait out the 5 minutes so a
+      # broken build can restart at most 12 times an hour instead of spinning non-stop.
+      - name: Pace restarts after a crash
+        if: ${{ !cancelled() }}
+        run: |
+          el=$(( $(date +%s) - ${T0:-0} ))
+          if [ "$el" -lt 300 ]; then echo "Run lasted only ${el}s - pausing."; sleep $(( 300 - el )); fi

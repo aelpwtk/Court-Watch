@@ -2,30 +2,48 @@ name: Court doctor
 
 on:
   schedule:
-    - cron: "*/20 * * * *"   # checks the watcher every ~20 min; GitHub may start it a few minutes late
-  workflow_dispatch:
+    - cron: "*/20 * * * *"   # backup only: GitHub starts these a few times a day at best
+  workflow_dispatch:           # how each run queues the next, and how the watcher restarts a dead doctor
 
 permissions:
   contents: write            # saves doctor_state.json
-  actions: write             # can start / cancel Court watch runs
+  actions: write             # can start / cancel runs
 
 concurrency:
   group: court-doctor
   cancel-in-progress: false
 
+env:
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
+
 jobs:
   doctor:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 135
     steps:
       - uses: actions/checkout@v5
 
-      - name: Run doctor
-        run: python3 doctor.py
+      - name: Note the start time
+        run: echo "T0=$(date +%s)" >> "$GITHUB_ENV"
+
+      # Self-chaining, same as the watcher: the next doctor run waits in line and starts when this one ends.
+      - name: Queue next doctor run
+        continue-on-error: true
+        run: |
+          for i in 1 2 3; do
+            gh api -X POST "repos/${{ github.repository }}/actions/workflows/court-doctor.yml/dispatches" \
+              -f ref="${{ github.event.repository.default_branch }}" && echo "Next doctor run queued." && exit 0
+            sleep $((i * 5))
+          done
+          exit 1
+
+      - name: Run doctor (checks the watcher every 3 min for ~2 h)
+        run: python3 doctor.py --loop
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          DOCTOR_LOOP_SECONDS: 7200
+          DOCTOR_INTERVAL: 180
 
       - name: Save doctor state
         if: always()
@@ -41,3 +59,16 @@ jobs:
             sleep $((i * 4))
           done
           exit 1
+
+      - name: Make sure a successor is queued
+        if: always()
+        continue-on-error: true
+        run: python3 doctor.py --successor court-doctor.yml
+
+      # Safety brake: if this run ended within 5 minutes something crashed. Wait out the 5 minutes so a
+      # broken build can restart at most 12 times an hour instead of spinning non-stop.
+      - name: Pace restarts after a crash
+        if: ${{ !cancelled() }}
+        run: |
+          el=$(( $(date +%s) - ${T0:-0} ))
+          if [ "$el" -lt 300 ]; then echo "Run lasted only ${el}s - pausing."; sleep $(( 300 - el )); fi
