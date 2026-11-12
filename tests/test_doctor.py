@@ -104,15 +104,12 @@ def gh_cancel_fails(*a):
 d.gh = gh_cancel_fails; d.apply([("cancel", 77)])
 assert any(c[0] == "api" and c[-1].endswith("/actions/runs/77/force-cancel") for c in calls), calls; print("   zombie: force-cancel fallback OK")
 
-# 14 helper modes: --ensure restarts another workflow; --successor only queues when nothing waits
+# 14 --ensure restarts another workflow only when none of its runs is working
 calls.clear(); d.gh = lambda *a: calls.append(a) or ""
 d.list_runs = lambda workflow=d.WORKFLOW: [run(200, done=170)]
 d.ensure("court-doctor.yml", 150, NOW); assert ("workflow", "run", "court-doctor.yml") in calls, calls
 calls.clear(); d.list_runs = lambda workflow=d.WORKFLOW: [run(100, "in_progress", job=100)]
-d.ensure("court-doctor.yml", 150, NOW); assert not calls, calls
-d.successor("court-watch.yml"); assert ("workflow", "run", "court-watch.yml") in calls
-calls.clear(); d.list_runs = lambda workflow=d.WORKFLOW: [run(1, "pending"), run(29, "in_progress", job=1)]
-d.successor("court-watch.yml"); assert not calls, calls; print("14 ensure / successor helpers OK")
+d.ensure("court-doctor.yml", 150, NOW); assert not calls, calls; print("14 ensure helper OK")
 
 # 15 the loop keeps going when a check blows up
 ticks = []

@@ -69,12 +69,6 @@ jobs:
           done
           exit 1
 
-      # Belt and braces: if the queued successor vanished (or was never queued), queue one before leaving.
-      - name: Make sure a successor is queued
-        if: always()
-        continue-on-error: true
-        run: python3 doctor.py --successor court-watch.yml
-
       # Safety brake: if this run ended within 5 minutes something crashed. Wait out the 5 minutes so a
       # broken build can restart at most 12 times an hour instead of spinning non-stop.
       - name: Pace restarts after a crash

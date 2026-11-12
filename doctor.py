@@ -18,8 +18,7 @@ Site-level problems (the court site down) are already pinged by the watcher itse
 
 Usage:  doctor.py                       one check of the watcher
         doctor.py --loop                check every DOCTOR_INTERVAL s for DOCTOR_LOOP_SECONDS
-        doctor.py --ensure WORKFLOW MIN restart WORKFLOW if none of its runs is working (MIN = stuck limit)
-        doctor.py --successor WORKFLOW  queue a run of WORKFLOW unless one is already waiting"""
+        doctor.py --ensure WORKFLOW MIN restart WORKFLOW if none of its runs is working (MIN = stuck limit)"""
 
 import json
 import os
@@ -237,21 +236,10 @@ def ensure(workflow, stuck_min, now=None):
     return 0
 
 
-def successor(workflow):
-    """Queue the next run of WORKFLOW unless one is already waiting (belt and braces for self-chaining)."""
-    if any(r.get("status") in WAITING for r in list_runs(workflow)):
-        print(f"successor {workflow}: already queued.")
-    else:
-        apply([("dispatch",)], workflow)
-    return 0
-
-
 if __name__ == "__main__":
     args = sys.argv[1:]
     if args[:1] == ["--loop"]:
         sys.exit(loop())
     if args[:1] == ["--ensure"]:
         sys.exit(ensure(args[1], float(args[2])))
-    if args[:1] == ["--successor"]:
-        sys.exit(successor(args[1]))
     sys.exit(main())
