@@ -2,13 +2,13 @@
   "alerted": [
     "Sun 29/11",
     "Thu 03/12",
-    "Fri 04/12"
+    "Fri 04/12",
+    "Sat 05/12"
   ],
   "fail_alerted": false,
   "fails": 0,
-  "heartbeat": "2026-11-20",
+  "heartbeat": "2026-11-21",
   "known_days": [
-    "Fri 20/11",
     "Sat 21/11",
     "Sun 22/11",
     "Mon 23/11",
@@ -22,6 +22,7 @@
     "Tue 01/12",
     "Wed 02/12",
     "Thu 03/12",
-    "Fri 04/12"
+    "Fri 04/12",
+    "Sat 05/12"
   ]
 }
